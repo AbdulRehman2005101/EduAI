@@ -33,6 +33,15 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
 
+    // Validation
+    if (!name || !email || !password || !role) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    if (!['TEACHER', 'STUDENT', 'TA'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
     // Check if user exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -66,6 +75,11 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Validation
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
     // Find user
     const user = await User.findOne({ email });
     if (!user) {
@@ -96,46 +110,17 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Sync user (for Clerk webhook)
-app.post('/api/users/sync-user', async (req, res) => {
+// Get current user profile
+app.get('/api/auth/me', auth, async (req, res) => {
   try {
-    const { clerkUserId, email, name, avatar } = req.body;
-
-    if (!clerkUserId || !email) {
-      return res.status(400).json({ error: 'clerkUserId and email are required' });
-    }
-
-    // Check if user exists
-    const existingUser = await User.findOne({
-      $or: [{ clerkUserId }, { email }]
-    });
-
-    if (existingUser) {
-      if (existingUser.clerkUserId !== clerkUserId) {
-        const updatedUser = await User.findByIdAndUpdate(
-          existingUser._id,
-          { clerkUserId },
-          { new: true }
-        );
-        return res.json({ message: 'User updated', user: updatedUser });
+    res.json({
+      user: {
+        id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role,
+        avatar: req.user.avatar
       }
-      return res.json({ message: 'User already exists', user: existingUser });
-    }
-
-    // Create new user
-    const newUser = new User({
-      clerkUserId,
-      name: name || email.split('@')[0],
-      email,
-      password: 'oauth-user',
-      avatar: avatar || null,
-      role: 'STUDENT'
-    });
-    await newUser.save();
-
-    res.status(201).json({
-      message: 'User created successfully',
-      user: newUser
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -251,6 +236,28 @@ app.get('/api/courses/:id', auth, async (req, res) => {
     }
 
     res.json(course);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all courses for current user
+app.get('/api/courses', auth, async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    const courses = await Course.find({
+      $or: [
+        { teacherId: userId },
+        { taIds: userId },
+        { studentIds: userId }
+      ]
+    })
+    .populate('teacherId', 'name email avatar')
+    .populate('tas', 'name email avatar')
+    .populate('students', 'name email avatar');
+
+    res.json({ courses });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
