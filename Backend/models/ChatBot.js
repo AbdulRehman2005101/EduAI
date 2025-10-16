@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const chatBotSchema = new mongoose.Schema({
-  messages: { type: mongoose.Schema.Types.Mixed }, // JSON data
+  messages: { type: mongoose.Schema.Types.Mixed },
   
   courseId: { 
     type: mongoose.Schema.Types.ObjectId, 

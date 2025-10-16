@@ -649,6 +649,15 @@ app.get('/', (req, res) => {
   });
 });
 
+// 404 Handler - MUST be the last route
+app.use((req, res) => {
+  res.status(404).json({ 
+    error: 'Route not found',
+    path: req.originalUrl,
+    method: req.method
+  });
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🎯 Server running on port ${PORT}`);

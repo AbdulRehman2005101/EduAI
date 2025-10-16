@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const lectureSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String, required: true },
-  materials: { type: mongoose.Schema.Types.Mixed }, // JSON data
+  materials: { type: mongoose.Schema.Types.Mixed },
   uploadDate: { type: Date, default: Date.now },
   
   courseId: { 
