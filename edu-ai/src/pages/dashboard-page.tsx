@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useUser } from "@clerk/clerk-react";
+import { useAuth } from "@/context/auth-context";
 import DashboardHeader from "../components/shared/header";
 import {
   PlusCircle,
@@ -24,14 +24,28 @@ import { useNavigate } from "react-router-dom";
 
 interface Course {
   id: string;
+  _id?: string;
   name: string;
   description: string;
   classCode?: string;
-  teacherId?: string;
-  teacher?: {
+  teacherId?: {
+    _id: string;
     name: string;
     email: string;
+    avatar?: string;
   };
+  tas?: Array<{
+    _id: string;
+    name: string;
+    email: string;
+    avatar?: string;
+  }>;
+  students?: Array<{
+    _id: string;
+    name: string;
+    email: string;
+    avatar?: string;
+  }>;
   assignments?: Array<{
     id: string;
     title: string;
@@ -51,31 +65,35 @@ const DashboardCourses = () => {
   const [addingCourse, setAddingCourse] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newCourse, setNewCourse] = useState({ title: "", description: "" });
-  const { user } = useUser();
+  const { user, isAuthenticated } = useAuth();
   const [classCode, setClassCode] = useState("");
   const [loadingClassCode, setLoadingClassCode] = useState(false);
   const [errorClassCode, setErrorClassCode] = useState("");
   const [openClassCode, setOpenClassCode] = useState(false);
   const navigate = useNavigate();
 
+  // Get auth token from localStorage
+  const getAuthToken = () => {
+    return localStorage.getItem('token');
+  };
+
   useEffect(() => {
     const fetchCourses = async () => {
-      if (!user?.primaryEmailAddress?.emailAddress) return;
+      if (!isAuthenticated || !user) return;
 
       setLoading(true);
       setError(null);
 
       try {
-        // Determine endpoint based on user role
-        let endpoint = "";
-        if (user.publicMetadata?.role === "TEACHER") {
-          endpoint = "http://localhost:3000/api/courses/teacher";
-        } else {
-          endpoint = "http://localhost:3000/api/courses/student";
-        }
+        const token = getAuthToken();
+        const response = await fetch('http://localhost:5000/api/courses', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
 
-        const response = await fetch(`${endpoint}?email=${user.primaryEmailAddress.emailAddress}`);
-        
         if (!response.ok) {
           throw new Error('Failed to fetch courses');
         }
@@ -93,7 +111,7 @@ const DashboardCourses = () => {
     };
 
     fetchCourses();
-  }, [user]);
+  }, [isAuthenticated, user]);
 
   // Handle course add
   const handleAddCourse = async () => {
@@ -105,15 +123,16 @@ const DashboardCourses = () => {
     setAddingCourse(true);
     try {
       setError(null);
-      const response = await fetch("http://localhost:3000/api/courses", {
+      const token = getAuthToken();
+      const response = await fetch("http://localhost:5000/api/courses/add-course", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           name: newCourse.title.trim(),
           description: newCourse.description.trim(),
-          teacherEmail: user?.primaryEmailAddress?.emailAddress,
         }),
       });
 
@@ -126,11 +145,14 @@ const DashboardCourses = () => {
       console.log("Added course response:", data);
 
       const newCourseData: Course = {
-        id: data.course?.id || data.id,
-        name: data.course?.name || data.name || newCourse.title.trim(),
-        description: data.course?.description || data.description || newCourse.description.trim(),
-        teacherId: data.course?.teacherId || data.teacherId,
-        teacher: data.course?.teacher || data.teacher,
+        id: data.course?._id || data.course?.id,
+        _id: data.course?._id || data.course?.id,
+        name: data.course?.name || newCourse.title.trim(),
+        description: data.course?.description || newCourse.description.trim(),
+        classCode: data.course?.classCode,
+        teacherId: data.course?.teacherId,
+        tas: data.course?.tas || [],
+        students: data.course?.students || [],
         assignments: data.course?.assignments || [],
         announcements: data.course?.announcements || [],
       };
@@ -156,12 +178,15 @@ const DashboardCourses = () => {
     setErrorClassCode("");
 
     try {
-      const response = await fetch("http://localhost:3000/api/courses/join", {
+      const token = getAuthToken();
+      const response = await fetch("http://localhost:5000/api/courses/join", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           classCode: classCode.trim().toLowerCase(),
-          studentEmail: user?.primaryEmailAddress?.emailAddress,
         }),
       });
 
@@ -196,8 +221,7 @@ const DashboardCourses = () => {
     );
   }
 
-  const userRole = user?.publicMetadata?.role as string || "STUDENT";
-  const isTeacher = userRole === "TEACHER";
+  const isTeacher = user?.role === "TEACHER";
 
   return (
     <div className="flex-1 min-h-screen w-full p-6 bg-gradient-to-br from-[#1B2023] to-[#2A2F35]">
@@ -400,7 +424,7 @@ const DashboardCourses = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {courses.map((course) => (
               <div
-                key={course.id}
+                key={course.id || course._id}
                 className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105"
               >
                 <div className="flex justify-between items-start mb-4">
@@ -411,6 +435,11 @@ const DashboardCourses = () => {
                     <p className="text-gray-400 text-sm line-clamp-3 mb-4">
                       {course.description || "No description available"}
                     </p>
+                    {course.classCode && (
+                      <p className="text-xs text-gray-500 mb-2">
+                        Class Code: <span className="text-gray-400 font-mono">{course.classCode}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -434,7 +463,7 @@ const DashboardCourses = () => {
                     variant="outline"
                     size="sm"
                     className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
-                    onClick={() => navigate(`/dashboard/course/${course.id}`)}
+                    onClick={() => navigate(`/dashboard/course/${course.id || course._id}`)}
                   >
                     <Eye className="h-4 w-4 mr-2" />
                     View
@@ -452,12 +481,12 @@ const DashboardCourses = () => {
                 </div>
 
                 {/* Teacher Info for non-teachers */}
-                {!isTeacher && course.teacher && (
+                {!isTeacher && course.teacherId && (
                   <div className="mt-4 pt-4 border-t border-gray-700">
                     <p className="text-xs text-gray-500">
                       Instructor:{" "}
                       <span className="text-gray-400">
-                        {course.teacher.name}
+                        {course.teacherId.name}
                       </span>
                     </p>
                   </div>

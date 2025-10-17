@@ -240,7 +240,7 @@ app.get('/api/courses/:id', auth, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
+//
 // Get all courses for current user
 app.get('/api/courses', auth, async (req, res) => {
   try {
